@@ -1,5 +1,6 @@
 import RNA
 import numpy as np
+import pandas as pd
 
 pairs_list = ['CG', 'GC', 'AU', 'UA', 'GU', 'UG']
 bases = ['G', 'U', 'A', 'C']
@@ -10,7 +11,9 @@ complements = {
     'C': ['G']
 }
 
-def get_puzzle(df_eterna_100, eterna_id=None, idx=None, verbose=True, solution=1):
+def get_puzzle(df_eterna_100=None, eterna_id=None, idx=None, verbose=True, solution=1, return_name=False):
+    if df_eterna_100 is None:
+        df_eterna_100 = pd.read_csv('eterna100-puzzles.txt', delimiter='\t')
     if eterna_id is not None:
         row = df_eterna_100[df_eterna_100['Eterna ID'] ==  eterna_id].iloc[0]
     elif idx is not None:
@@ -45,6 +48,8 @@ def get_puzzle(df_eterna_100, eterna_id=None, idx=None, verbose=True, solution=1
         return secundary_structure, None
     
     assert len(secundary_structure) == len(sequence)
+    if return_name:
+        return secundary_structure, sequence, row['Puzzle Name']
     return secundary_structure, sequence
 
 
@@ -70,7 +75,7 @@ def get_initial_guess(secundary_structure, bonds_initial_type='random', verbose=
     elif bonds_initial_type=='low_energy_bonds':
         sample_pairs_list = ['GU', 'UG']
         sample_bases = ['A']
-        print('low energy bonds pairs list')
+#         print('low energy bonds pairs list')
     elif bonds_initial_type=='high_energy_bonds':
         sample_pairs_list = ['GC', 'CG']
         print('high energy bonds pairs list')

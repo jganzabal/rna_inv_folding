@@ -1,3 +1,7 @@
+solved_puzzles/
+tensorboard_logs/
+models/
+logs/
 __pycache__/
 .ipynb_checkpoints/
 
