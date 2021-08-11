@@ -1,3 +1,4 @@
+*.svg
 solved_puzzles/
 tensorboard_logs/
 models/

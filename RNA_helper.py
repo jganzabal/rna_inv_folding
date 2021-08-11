@@ -45,7 +45,7 @@ def get_puzzle(df_eterna_100=None, eterna_id=None, idx=None, verbose=True, solut
             print('annotated:')
             print(secundary_structure)
             print('*'*50, 'warning', '*'*50)
-        return secundary_structure, None
+        return secundary_structure, None, row['Puzzle Name']
     
     assert len(secundary_structure) == len(sequence)
     if return_name:

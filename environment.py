@@ -25,7 +25,8 @@ class RNAInvEnvironment(gym.Env):
                 assert False
         assert len(singles) +  2*len(bond_tuples) == len(structure)
         return bond_tuples, singles
-    def __init__(self, objective_structure, policy='random', max_steps=100, tuple_obs_space=False, metric_type='energy', sequences_file='sequences_learned.txt'):
+    def __init__(self, objective_structure, policy='random', max_steps=100, tuple_obs_space=False, metric_type='energies_mse', sequences_file='sequences_learned.txt'):
+        self.sequences_results = {}
         self.sequences_file = sequences_file
         if not os.path.exists(sequences_file):
             f = open(self.sequences_file, 'w')
@@ -89,20 +90,44 @@ class RNAInvEnvironment(gym.Env):
         else:
             return {f'{i}': self.inv_bases_dict[base] for i, base in enumerate(state)}
     
+    def get_sequence_data(self, state):
+        
+        if state in self.sequences_results:
+            data = self.sequences_results[state]
+        else:
+            folding_structure, free_energy = RNA.fold(state)
+            objective_distance = secundary_structures_metric(folding_structure, self.objective_structure)
+            energy_to_objective = RNA.eval_structure_simple(state, self.objective_structure)
+            data = {
+                'folding_structure': folding_structure,
+                'free_energy': free_energy,
+                'objective_distance': objective_distance,
+                'energy_to_objective': energy_to_objective
+            }
+            self.sequences_results[state] = data
+        return data
+        
+    
     def reset(self):
 #         self.state = get_initial_guess(self.objective_structure, 'low_energy_bonds')
         self.state = self.sample_random_action()
         self.steps = 0
-        current_structure, energy = RNA.fold(self.state)
-        self.objective_distance = secundary_structures_metric(current_structure, self.objective_structure)
-        self.energy = RNA.eval_structure_simple(self.state, self.objective_structure)
+        
+        if self.metric_type in ['delta_energy', 'delta_distance']:
+            data = self.get_sequence_data(self.state)
+            self.objective_distance = data['objective_distance']
+            self.energy_to_objective = data['energy_to_objective']
+        
         return self.encode_state(self.state)
     
     def step(self, action):
         self.steps = self.steps + 1
         self.state = self.action_to_state(action)
-        current_structure, energy = RNA.fold(self.state)
-        solved = (current_structure == self.objective_structure)
+        
+        data = self.get_sequence_data(self.state)
+        
+        free_energy = data['free_energy']
+        solved = (data['folding_structure'] == self.objective_structure)
         done = solved or (self.steps >= self.max_steps)
         
         if done:
@@ -110,41 +135,45 @@ class RNAInvEnvironment(gym.Env):
                 print(self.state)
                 f = open(self.sequences_file, 'a')
                 f.write(self.state + '\n')
-                
                 f.close()
 
-        new_objective_distance = secundary_structures_metric(current_structure, self.objective_structure)
-        distance_reward = new_objective_distance - self.objective_distance
-        self.objective_distance = new_objective_distance
+        new_objective_distance = data['objective_distance']
+        new_energy_to_objective = data['energy_to_objective']
         
-        new_energy = RNA.eval_structure_simple(self.state, self.objective_structure)
-        energy_reward = -(new_energy - self.energy)
-        self.energy = new_energy
+        if self.metric_type in ['delta_energy', 'delta_distance']:
+            delta_distance = new_objective_distance - self.objective_distance
+            self.objective_distance = new_objective_distance
+            delta_energy = -(new_energy_to_objective - self.energy_to_objective)
+            self.energy_to_objective = new_energy_to_objective
+        else:
+            delta_distance = 0
+            delta_energy = 0
         
-        if self.metric_type == 'energy':
-            reward = energy_reward
-        elif self.metric_type == 'distance':
-            reward = distance_reward
+        if self.metric_type == 'delta_energy':
+            reward = delta_energy
+        elif self.metric_type == 'delta_distance':
+            reward = delta_distance
         elif self.metric_type == 'total_distance':
             reward = new_objective_distance
         elif self.metric_type == 'combined':
             delta = 1 - new_objective_distance
-            reward = new_objective_distance + 0.5 * delta * (energy_reward >= 0)
-        elif self.metric_type == 'delta_energies':
-            reward = (new_energy)
+            reward = new_objective_distance + 0.5 * delta * (delta_energy >= 0)
+        elif self.metric_type == 'energies_mse':
+            reward = -(new_energy_to_objective - free_energy)**2
         else:
             print('Error, no metric found')
             assert False
         
         return self.encode_state(self.state), reward, done, {
-            'free_energy': energy,
-            'folding_struc': current_structure,
+            'free_energy': free_energy,
+            'folding_struc': data['folding_structure'],
             'structure_distance': new_objective_distance,
-            'energy_to_objective': new_energy,
-            'energy_reward': energy_reward,
-            'distance_reward': distance_reward,
+            'energy_to_objective': new_energy_to_objective,
+            'energy_reward': delta_energy,
+            'distance_reward': delta_distance,
             'sequence': self.state,
-            'solved': solved
+            'solved': solved,
+            'unique_sequences_N': len(self.sequences_results)
         }
     
     
